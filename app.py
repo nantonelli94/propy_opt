@@ -70,7 +70,7 @@ if st.button("🚀 Ejecutar Optimización Global", type="primary"):
                 min_error = float('inf')
                 
                 # Buscador interno de Paso (P/D) óptimo usando propy
-                for pd_test in np.linspace(0.4, 1.6, 80):
+                for pd_test in np.linspace(0.5, 1.6, 80):
                     prop_test = WageningenBPropeller(diameter=D, blades=Z, pd_ratio=pd_test)
                     try:
                         error = abs(prop_test.kt(J) - KT_req)
