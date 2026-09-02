@@ -144,16 +144,17 @@ if ejecutar_opt or 'opt_realizada' in st.session_state:
         
         # RENDERIZADO VISUAL EXCLUSIVO: TABLA CON "BIG NUMBERS"
         # RENDERIZADO VISUAL CON IMAGEN CENTRADA
+
+                
+         # RENDERIZADO VISUAL CON IMAGEN CENTRADA A LA MITAD DE TAMAÑO
         with col_main1:
             try:
-                # Creamos 3 columnas virtuales para encasillar y centrar el logo
-                col_logo_izq, col_logo_centro, col_logo_der = st.columns([1, 2, 1])
+                # Ajustamos las proporciones para encoger la columna central al 30%
+                col_logo_izq, col_logo_centro, col_logo_der = st.columns([35, 30, 35])
                 with col_logo_centro:
                     st.image("logo_tdb2.jpg", use_container_width=True)
             except:
                 pass
-                
- 
 
 
             
