@@ -143,16 +143,20 @@ if ejecutar_opt or 'opt_realizada' in st.session_state:
         st.session_state['prop_optima'] = prop_optima
         
         # RENDERIZADO VISUAL EXCLUSIVO: TABLA CON "BIG NUMBERS"
+        # RENDERIZADO VISUAL CON IMAGEN CENTRADA
         with col_main1:
             try:
-                # Insertamos el logo del proyecto de cátedra en la parte superior
-                st.image("logo_tdb2.jpg", width=250)
-
+                # Creamos 3 columnas virtuales para encasillar y centrar el logo
+                col_logo_izq, col_logo_centro, col_logo_der = st.columns([1, 2, 1])
+                with col_logo_centro:
+                    st.image("logo_tdb2.jpg", use_container_width=True)
             except:
                 pass
                 
-            st.markdown('<div class="big-table-header">Tabla de Resultados Finales</div>', unsafe_allow_html=True)
+ 
 
+
+            
             
             st.markdown('<div class="big-table-header">Tabla de Resultados Finales</div>', unsafe_allow_html=True)
             
