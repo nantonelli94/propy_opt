@@ -4,11 +4,46 @@ from propy import WageningenBPropeller
 
 st.set_page_config(page_title="Cátedra Propulsión - Optimización", layout="wide", page_icon="⚓")
 
+# Estilos CSS personalizados para agrandar los números y mejorar la estética de la tabla
+st.markdown("""
+    <style>
+    .big-table-header {
+        font-size: 22px !important;
+        font-weight: bold !important;
+        color: #1A365D;
+        border-bottom: 2px solid #1A365D;
+        padding-bottom: 5px;
+        margin-top: 20px;
+    }
+    .metric-row {
+        background-color: #F7FAFC;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        border-left: 5px solid #2B6CB0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .metric-label {
+        font-size: 18px !important;
+        font-weight: 500;
+        color: #2D3748;
+    }
+    .metric-value {
+        font-size: 26px !important;
+        font-weight: bold;
+        color: #2B6CB0;
+        font-family: 'Courier New', Courier, monospace;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("⚓ Sistema de Optimización Propulsiva - Método de la Cátedra")
 st.markdown("Automatización estricta del **Anexo 1: Procedimiento analítico de diseño y optimización polinómica**.")
 
 # =============================================================================
-# PANEL LATERAL: ENTRADAS DEL USUARIO
+# PANEL LATERAL: ENTRADAS DEL BUQUE Y ENTORNO
 # =============================================================================
 st.sidebar.header("📊 1. Datos del Buque y Ensayo")
 V_nudos = st.sidebar.slider("Velocidad del buque (V en Nudos)", 5.0, 30.0, 12.0, 0.5)
@@ -22,7 +57,7 @@ num_ejes = st.sidebar.radio("Líneas de eje", options=[1, 2], index=0)
 
 st.sidebar.subheader("🧼 Verificación de Cavitación (Keller)")
 h_eje = st.sidebar.slider("Inmersión del eje (h en metros)", 0.5, 10.0, 2.0, 0.1)
-Z = st.sidebar.selectbox("Número de palas (z)", options=[3, 4, 5, 6, 7], index=1)
+Z = st.sidebar.selectbox("Número de palas (z)", options=[3, 4, 5, 6], index=1)
 
 st.sidebar.subheader("📐 Restricción Física del Codaste")
 D = st.sidebar.number_input("Diámetro disponible de la hélice (D en metros)", 0.5, 8.0, 1.40, 0.05)
@@ -45,7 +80,7 @@ Fa_F_min = ((1.3 + 0.3 * Z) * T_est_por_helice) / ((P_0 - P_v) * (D**2)) + k_kel
 AE_A0 = max(0.35, min(1.0, float(np.ceil(Fa_F_min * 20) / 20)))
 C_star = T_est_por_helice / (rho * (D**2) * (V_A**2))
 
-# Barrido analítico de las curvas para intersectar KT = C* * J^2
+# Barrido analítico para intersectar KT = C* * J^2
 pd_rango = np.array([0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4])
 lista_J_optimos = []
 lista_eta_optimos = []
@@ -71,9 +106,17 @@ for pd_test in pd_rango:
         pares_validos_pd.append(pd_test)
 
 # =============================================================================
-# PROCESAMIENTO E INTERFAZ DE RESULTADOS
+# BLOQUE GENERAL DE CONTROL Y RENDERIZADO
 # =============================================================================
-if st.button("🚀 Ejecutar Optimización Global", type="primary"):
+col_main1, col_main2 = st.columns([3, 2])
+
+with col_main1:
+    st.subheader("PASO 1: Optimización de la Hélice (Aguas Abiertas)")
+    ejecutar_opt = st.button("🚀 Calcular Hélice Óptima", type="primary")
+
+if ejecutar_opt or 'opt_realizada' in st.session_state:
+    st.session_state['opt_realizada'] = True
+    
     if len(pares_validos_pd) >= 3:
         coefs = np.polyfit(pares_validos_pd, lista_eta_optimos, 2)
         pd_optimo_analitico = -coefs[1] / (2 * coefs[0])
@@ -92,70 +135,68 @@ if st.button("🚀 Ejecutar Optimización Global", type="primary"):
         Q_nm = kq_opt * rho * (n_hélice_rps**2) * (D**5)
         
         P_entregada_kW = (2 * np.pi * n_hélice_rps * Q_nm) / 1000.0
-        DHP = P_entregada_kW / 0.735499  # kW a CV (caballos de vapor)
+        DHP = P_entregada_kW / 0.735499  # cv
         BHP_minimo = DHP / eficiencia_ejes
-        BHP_diseño = BHP_minimo * 1.10  
         
-        # Base de datos de motores comerciales para determinar la r_máx de cálculo
-        CATALOGO_MOTORES = [
-            {"modelo": "Motor Naval Heavy-Duty A", "HP": 350.0, "RPM": 1200.0},
-            {"modelo": "Motor Naval Medium-Duty B", "HP": 500.0, "RPM": 1800.0},
-            {"modelo": "Motor Naval High-Speed C", "HP": 750.0, "RPM": 2100.0},
-            {"modelo": "Motor Naval High-Speed D", "HP": 1200.0, "RPM": 2300.0},
-            {"modelo": "Motor Naval Potencia Max E", "HP": 2500.0, "RPM": 1800.0}
-        ]
+        # Guardamos en variables de estado para que persistan al usar el Paso 2
+        st.session_state['n_hélice_rps'] = n_hélice_rps
+        st.session_state['prop_optima'] = prop_optima
         
-        motor_valido = None
-        for mot in CATALOGO_MOTORES:
-            if mot["HP"] >= BHP_diseño:
-                motor_valido = mot
-                break
-        
-        # Relación de reducción máxima teórica de cálculo
-        if motor_valido:
-            r_max_calculo = motor_valido["RPM"] / (n_hélice_rps * 60.0)
-            nombre_motor = motor_valido["modelo"]
-        else:
-            r_max_calculo = 1800.0 / (n_hélice_rps * 60.0) # RPM estándar por defecto si excede catálogo
-            nombre_motor = "Motor fuera de catálogo estándar (>2500 HP)"
+        # RENDERIZADO VISUAL EXCLUSIVO: TABLA CON "BIG NUMBERS"
+        with col_main1:
+            st.markdown('<div class="big-table-header">Tabla de Resultados Finales</div>', unsafe_allow_html=True)
+            
+            rows = [
+                ("η_MÁX (Eficiencia máxima en aguas abiertas)", f"{eta_max:.4f}"),
+                ("P/D (ηMÁX) (Relación paso/diámetro óptima)", f"{pd_optimo_analitico:.4f}"),
+                ("J (ηMÁX) (Coeficiente de avance óptimo)", f"{j_optimo_analitico:.4f}"),
+                ("nh(mínimas) [rps] (Velocidad de rotación hélice)", f"{n_hélice_rps:.2f} rps"),
+                ("Kq (ηMÁX) (Coeficiente de torque óptimo)", f"{kq_opt:.5f}"),
+                ("Kt (ηMÁX) (Coeficiente de empuje óptimo)", f"{kt_opt:.4f}"),
+                ("Q(mínima) [N.m] (Torque absorbido mínimo)", f"{Q_nm:.1f} N.m"),
+                ("DHP mínimo [cv] (Potencia entregada a hélice)", f"{DHP:.1f} cv"),
+                ("BHP mínimo [cv] (Potencia al freno mínima)", f"{BHP_minimo:.1f} cv")
+            ]
+            
+            for label, val in rows:
+                st.markdown(f"""
+                <div class="metric-row">
+                    <span class="metric-label">{label}</span>
+                    <span class="metric-value">{val}</span>
+                </div>
+                """, unsafe_allow_html=True)
 
         # =============================================================================
-        # CONSTRUCCIÓN DE LA TABLA DE RESULTADOS FINALES SOLICITADA
+        # PASO 2: INTERFAZ DINÁMICA DE SELECCIÓN DE MOTOR POR PARTE DEL USUARIO
         # =============================================================================
-        st.subheader("📋 Tabla de resultados finales")
-        
-        tabla_datos = {
-            "Parámetro / Variable": [
-                "η_MÁX (Eficiencia máxima en aguas abiertas)",
-                "P/D (ηMÁX) (Relación paso/diámetro óptima)",
-                "J (ηMÁX) (Coeficiente de avance óptimo)",
-                "nh(mínimas) [rps] (Velocidad de rotación de la hélice)",
-                "Kq (ηMÁX) (Coeficiente de torque óptimo)",
-                "Kt (ηMÁX) (Coeficiente de empuje óptimo)",
-                "Q(mínima) [N.m] (Torque absorbido mínimo)",
-                "DHP mínimo [cv] (Potencia entregada a la hélice)",
-                "BHP mínimo [cv] (Potencia al freno mínima del motor)",
-                "r máx (relación de reducción máxima de cálculo)"
-            ],
-            "Valor Obtenido": [
-                f"{eta_max:.4f}",
-                f"{pd_optimo_analitico:.4f}",
-                f"{j_optimo_analitico:.4f}",
-                f"{n_hélice_rps:.2f} rps",
-                f"{kq_opt:.5f}",
-                f"{kt_opt:.4f}",
-                f"{Q_nm:.1f} N.m",
-                f"{DHP:.1f} cv",
-                f"{BHP_minimo:.1f} cv",
-                f"{r_max_calculo:.2f}:1"
-            ]
-        }
-        
-        # Mostrar tabla interactiva de ancho completo en Streamlit
-        st.table(tabla_datos)
-        
-        # Bloque informativo complementario de maquinaria
-        st.success(f"⚙️ **Acoplamiento Hidrodinámico:** Para cubrir este requerimiento se sugiere el **{nombre_motor}** con un BHP de diseño corregido (margen 10%) de **{BHP_diseño:.1f} cv**.")
-        
+        with col_main2:
+            st.subheader("PASO 2: Selección y Entrada de Maquinaria")
+            st.info("Utiliza los datos hidrodinámicos obtenidos a la izquierda para elegir un motor de catálogo comercial y cargar sus datos reales abajo.")
+            
+            # Entradas de texto numérico para el motor elegido por el alumno
+            motor_hp = st.number_input("Potencia nominal del motor seleccionado (HP)", min_value=10.0, max_value=20000.0, value=float(np.round(BHP_minimo * 1.10, -1)))
+            motor_rpm = st.number_input("Revoluciones de diseño del motor seleccionado (RPM)", min_value=100.0, max_value=6000.0, value=1800.0, step=100.0)
+            
+            # Verificaciones cinemáticas y relación de reducción
+            n_helice_rpm = st.session_state['n_hélice_rps'] * 60.0
+            r_max_calculo = motor_rpm / n_helice_rpm
+            
+            st.markdown("---")
+            st.markdown(f"### ⚙️ Relación de Reducción Máxima de Cálculo:")
+            st.markdown(f"<div style='font-size: 38px; font-weight: bold; color: #E53E3E; text-align: center; background-color: #FFF5F5; padding: 15px; border-radius: 8px; border: 2px dashed #E53E3E;'>r máx = {r_max_calculo:.2f} : 1</div>", unsafe_allow_html=True)
+            st.markdown(f"*Nota de cátedra: Debes buscar una caja reductora comercial cuyo valor de reducción sea el más próximo e inferior a este límite teórico para evitar subcargar o sobrecargar la hélice.*")
+            
+            # Entrada de la reducción comercial definitiva elegida por el alumno
+            i_comercial = st.number_input("Caja comercial final adoptada por el alumno (i)", min_value=0.5, max_value=15.0, value=float(np.floor(r_max_calculo * 2) / 2), step=0.1)
+            
+            # Verificación del Tiro a punto fijo basado en la combinación cargada
+            n_real_bita_rps = (motor_rpm / i_comercial) / 60.0
+            p_opt = st.session_state['prop_optima']
+            KT0 = p_opt.kt(0.0)
+            T0 = KT0 * rho * (n_real_bita_rps**2) * (D**4)
+            T_bita_total = T0 * (1 - t_0) * num_ejes
+            
+            st.markdown("---")
+            st.markdown(f"### 💪 Tiro de la Bita Verificado (J=0):")
+            st.markdown(f"<div style='font-size: 32px; font-weight: bold; color: #2F855A; text-align: center; background-color: #F0FFF4; padding: 10px; border-radius: 8px;'>{T_bita_total/9810:.1f} Toneladas ({T_bita_total/1000:.1f} kN)</div>", unsafe_allow_html=True)
     else:
-        st.error("La constante C* arroja valores fuera de los diagramas operativos de la Serie B. Intenta cambiar el diámetro o la resistencia del casco.")
