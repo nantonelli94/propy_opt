@@ -57,7 +57,7 @@ num_ejes = st.sidebar.radio("Líneas de eje", options=[1, 2], index=0)
 
 st.sidebar.subheader("🧼 Verificación de Cavitación (Keller)")
 h_eje = st.sidebar.slider("Inmersión del eje (h en metros)", 0.5, 10.0, 2.0, 0.1)
-Z = st.sidebar.selectbox("Número de palas (z)", options=[3, 4, 5, 6, 7], index=1)
+Z = st.sidebar.selectbox("Número de palas (z)", options=[3, 4, 5, 6], index=1)
 
 st.sidebar.subheader("📐 Restricción Física del Codaste")
 D = st.sidebar.number_input("Diámetro disponible de la hélice (D en metros)", 0.5, 8.0, 1.40, 0.05)
@@ -108,7 +108,7 @@ for pd_test in pd_rango:
 # =============================================================================
 # BLOQUE GENERAL DE CONTROL Y RENDERIZADO
 # =============================================================================
-col_main1, col_main2 = st.columns(2)
+col_main1, col_main2 = st.columns([3, 2])
 
 with col_main1:
     st.subheader("PASO 1: Optimización de la Hélice (Aguas Abiertas)")
@@ -119,7 +119,7 @@ if ejecutar_opt or 'opt_realizada' in st.session_state:
     
     if len(pares_validos_pd) >= 3:
         coefs = np.polyfit(pares_validos_pd, lista_eta_optimos, 2)
-        pd_optimo_analitico = -coefs / (2 * coefs)
+        pd_optimo_analitico = -coefs[1] / (2 * coefs[0])
         
         if pd_optimo_analitico < 0.5 or pd_optimo_analitico > 1.4:
             pd_optimo_analitico = pares_validos_pd[np.argmax(lista_eta_optimos)]
@@ -135,20 +135,15 @@ if ejecutar_opt or 'opt_realizada' in st.session_state:
         Q_nm = kq_opt * rho * (n_hélice_rps**2) * (D**5)
         
         P_entregada_kW = (2 * np.pi * n_hélice_rps * Q_nm) / 1000.0
-        DHP = P_entregada_kW / 0.735499  
+        DHP = P_entregada_kW / 0.735499  # cv
         BHP_minimo = DHP / eficiencia_ejes
         
+        # Guardamos en variables de estado para que persistan al usar el Paso 2
         st.session_state['n_hélice_rps'] = n_hélice_rps
         st.session_state['prop_optima'] = prop_optima
         
-        # RENDERIZADO VISUAL CON IMAGEN INCLUIDA COMO ENCABEZADO
+        # RENDERIZADO VISUAL EXCLUSIVO: TABLA CON "BIG NUMBERS"
         with col_main1:
-            try:
-                # Insertamos el logo del proyecto de cátedra con manejo de errores por si no se subió aún
-                st.image("logo_tdb2.jpg", use_container_width=True)
-            except:
-                pass
-                
             st.markdown('<div class="big-table-header">Tabla de Resultados Finales</div>', unsafe_allow_html=True)
             
             rows = [
@@ -178,9 +173,11 @@ if ejecutar_opt or 'opt_realizada' in st.session_state:
             st.subheader("PASO 2: Selección y Entrada de Maquinaria")
             st.info("Utiliza los datos hidrodinámicos obtenidos a la izquierda para elegir un motor de catálogo comercial y cargar sus datos reales abajo.")
             
+            # Entradas de texto numérico para el motor elegido por el alumno
             motor_hp = st.number_input("Potencia nominal del motor seleccionado (HP)", min_value=10.0, max_value=20000.0, value=float(np.round(BHP_minimo * 1.10, -1)))
             motor_rpm = st.number_input("Revoluciones de diseño del motor seleccionado (RPM)", min_value=100.0, max_value=6000.0, value=1800.0, step=100.0)
             
+            # Verificaciones cinemáticas y relación de reducción
             n_helice_rpm = st.session_state['n_hélice_rps'] * 60.0
             r_max_calculo = motor_rpm / n_helice_rpm
             
@@ -189,8 +186,10 @@ if ejecutar_opt or 'opt_realizada' in st.session_state:
             st.markdown(f"<div style='font-size: 38px; font-weight: bold; color: #E53E3E; text-align: center; background-color: #FFF5F5; padding: 15px; border-radius: 8px; border: 2px dashed #E53E3E;'>r máx = {r_max_calculo:.2f} : 1</div>", unsafe_allow_html=True)
             st.markdown(f"*Nota de cátedra: Debes buscar una caja reductora comercial cuyo valor de reducción sea el más próximo e inferior a este límite teórico para evitar subcargar o sobrecargar la hélice.*")
             
+            # Entrada de la reducción comercial definitiva elegida por el alumno
             i_comercial = st.number_input("Caja comercial final adoptada por el alumno (i)", min_value=0.5, max_value=15.0, value=float(np.floor(r_max_calculo * 2) / 2), step=0.1)
             
+            # Verificación del Tiro a punto fijo basado en la combinación cargada
             n_real_bita_rps = (motor_rpm / i_comercial) / 60.0
             p_opt = st.session_state['prop_optima']
             KT0 = p_opt.kt(0.0)
