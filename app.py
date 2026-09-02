@@ -146,7 +146,8 @@ if ejecutar_opt or 'opt_realizada' in st.session_state:
         with col_main1:
             try:
                 # Insertamos el logo del proyecto de cátedra en la parte superior
-                st.image("logo_tdb2.jpg", use_container_width=True)
+                st.image("logo_tdb2.jpg", width=250)
+
             except:
                 pass
                 
