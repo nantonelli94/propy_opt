@@ -200,3 +200,4 @@ if ejecutar_opt or 'opt_realizada' in st.session_state:
             st.markdown(f"### 💪 Tiro de la Bita Verificado (J=0):")
             st.markdown(f"<div style='font-size: 32px; font-weight: bold; color: #2F855A; text-align: center; background-color: #F0FFF4; padding: 10px; border-radius: 8px;'>{T_bita_total/9810:.1f} Toneladas ({T_bita_total/1000:.1f} kN)</div>", unsafe_allow_html=True)
     else:
+        st.error("La constante C* arroja valores fuera de los diagramas operativos de la Serie B. Modifica los parámetros del codaste en el panel izquierdo.")
