@@ -144,6 +144,15 @@ if ejecutar_opt or 'opt_realizada' in st.session_state:
         
         # RENDERIZADO VISUAL EXCLUSIVO: TABLA CON "BIG NUMBERS"
         with col_main1:
+            try:
+                # Insertamos el logo del proyecto de cátedra en la parte superior
+                st.image("logo_tdb2.jpg", use_container_width=True)
+            except:
+                pass
+                
+            st.markdown('<div class="big-table-header">Tabla de Resultados Finales</div>', unsafe_allow_html=True)
+
+            
             st.markdown('<div class="big-table-header">Tabla de Resultados Finales</div>', unsafe_allow_html=True)
             
             rows = [
