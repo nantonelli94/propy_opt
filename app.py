@@ -2,162 +2,170 @@ import streamlit as st
 import numpy as np
 from propy import WageningenBPropeller
 
-st.set_page_config(page_title="Optimizador Propulsivo Naval", layout="wide", page_icon="⚓")
-st.title("⚓ Diseñador de Hélices con Verificación de Cavitación (Keller)")
-st.subheader("Cálculo automático de Motor, Caja, Hélice Óptima y Tiro sobre la Bita")
+st.set_page_config(page_title="Cátedra Propulsión - Optimización", layout="wide", page_icon="⚓")
 
-# PANEL LATERAL: ENTRADAS
-st.sidebar.header("📊 Parámetros del Casco y Operación")
-V_nudos = st.sidebar.slider("Velocidad de diseño (Nudos)", min_value=5.0, max_value=35.0, value=12.0, step=0.5)
-R_T = st.sidebar.number_input("Resistencia al avance (Newtons)", min_value=1000, max_value=2000000, value=35000, step=5000)
+st.title("⚓ Sistema de Optimización Propulsiva - Método de la Cátedra")
+st.markdown("Automatización estricta del **Anexo 1: Procedimiento analítico de diseño y optimización polinómica**.")
+
+# =============================================================================
+# PANEL LATERAL: ENTRADAS DEL USUARIO (MÉTODO DE LA CÁTEDRA)
+# =============================================================================
+st.sidebar.header("📊 1. Datos del Buque y Ensayo")
+V_nudos = st.sidebar.slider("Velocidad del buque (V en Nudos)", 5.0, 30.0, 12.0, 0.5)
+R_T = st.sidebar.number_input("Resistencia al avance (R_T en Newtons)", 1000, 1000000, 35000, 1000)
 
 st.sidebar.subheader("🔗 Coeficientes de Interacción")
-w = st.sidebar.slider("Fracción de estela (w)", min_value=0.05, max_value=0.40, value=0.20, step=0.01)
-t = st.sidebar.slider("Deducción de empuje (t)", min_value=0.05, max_value=0.35, value=0.15, step=0.01)
-t_0 = st.sidebar.slider("Deducción de empuje en bita (t_0)", min_value=0.01, max_value=0.10, value=0.04, step=0.01)
+w = st.sidebar.slider("Fracción de estela (w)", 0.05, 0.40, 0.20, 0.01)
+t = st.sidebar.slider("Deducción de empuje (t)", 0.05, 0.35, 0.15, 0.01)
+t_0 = st.sidebar.slider("Deducción de empuje en bita (t_0)", 0.01, 0.10, 0.04, 0.01)
+num_ejes = st.sidebar.radio("Líneas de eje", options=[1, 2], index=0)
 
-st.sidebar.subheader("⚙️ Configuración de Propulsión")
-num_ejes = st.sidebar.radio("Cantidad de líneas de eje (Hélices)", options=[1, 2], index=0)
+st.sidebar.subheader("🧼 Verificación de Cavitación (Keller)")
+h_eje = st.sidebar.slider("Inmersión del eje (h en metros)", 0.5, 10.0, 2.0, 0.1)
+Z = st.sidebar.selectbox("Número de palas (z)", options=[3, 4, 5, 6], index=1)
 
-st.sidebar.subheader("🧼 Parámetros de Cavitación (Keller)")
-h_eje = st.sidebar.slider("Inmersión del eje de la hélice (h en metros)", min_value=0.5, max_value=15.0, value=2.0, step=0.1)
-AE_A0_propuesto = st.sidebar.slider("Relación de área expandida propuesta (AE/A0 o Fa/F)", min_value=0.30, max_value=1.0, value=0.65, step=0.05)
-
-st.sidebar.subheader("📐 Geometría y Restricciones")
-D_max = st.sidebar.slider("Diámetro máximo permitido (m)", min_value=0.5, max_value=6.0, value=1.40, step=0.05)
-Z = st.sidebar.selectbox("Número de palas (Z)", options=[3, 4, 5, 6, 7], index=1)
+st.sidebar.subheader("📐 Restricción Física del Codaste")
+D = st.sidebar.number_input("Diámetro disponible de la hélice (D en metros)", 0.5, 8.0, 1.40, 0.05)
 rho = st.sidebar.number_input("Densidad del agua (kg/m³)", value=1025.0)
-eta_s = st.sidebar.slider("Eficiencia de línea de ejes", min_value=0.90, max_value=1.0, value=0.97, step=0.01)
 
-# Cálculo de presiones para Keller
-P_atm = 101325.0  
-P_0 = P_atm + (rho * 9.81 * h_eje)  
-P_v = 1700.0  
+# =============================================================================
+# DESARROLLO MATEMÁTICO DEL ANEXO 1
+# =============================================================================
+# 1. Cálculo de fuerzas e interacciones
+V_A = (V_nudos * 0.514444) * (1 - w)
+T_total = R_T / (1 - t)
+T_est_por_helice = T_total / num_ejes  # Tiro estimado por hélice (T*)
+
+# 2. Área mínima de Keller
+P_atm = 101000.0  # Conforme a tu apunte (101000 N/m²)
+P_0 = P_atm + (rho * 9.81 * h_eje)
+P_v = 1700.0
 k_keller = 0.2 if num_ejes == 1 else 0.1
+Fa_F_min = ((1.3 + 0.3 * Z) * T_est_por_helice) / ((P_0 - P_v) * (D**2)) + k_keller
 
-V = V_nudos * 0.514444          
-V_A = V * (1 - w)
-T_req_total = R_T / (1 - t)
-T_req_por_helice = T_req_total / num_ejes  
+# Forzamos un área comercial válida redondeando hacia arriba del límite de Keller
+AE_A0 = max(0.35, min(1.0, float(np.ceil(Fa_F_min * 20) / 20)))
 
-# =============================================================================
-# GENERACIÓN AUTOMÁTICA DEL CATÁLOGO MASIVO DE MOTORES (Hasta 5000 HP y de 800 a 3000 RPM)
-# =============================================================================
-CATALOGO_MOTORES = []
-
-# Rango de potencias: Motores chicos/medianos de 100 en 100 HP, motores grandes de 500 en 500 HP
-rangos_hp = list(range(200, 1000, 100)) + list(range(1000, 5500, 500))
-
-for hp in rangos_hp:
-    # Para cada potencia, barremos desde 800 hasta 3000 RPM con pasos de 200 RPM
-    for rpm in range(800, 3200, 200):
-        # Clasificación pedagógica del motor según sus vueltas
-        if rpm <= 1200:
-            tipo = "Heavy Duty"
-        elif rpm <= 2200:
-            tipo = "Medium Duty"
-        else:
-            tipo = "High Speed"
-            
-        CATALOGO_MOTORES.append({
-            "modelo": f"Catálogo {hp}HP @ {rpm}RPM ({tipo})",
-            "HP": float(hp),
-            "RPM": float(rpm)
-        })
-
-CATALOGO_CAJAS = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0]
+# 3. Cálculo de la constante del método C*
+C_star = T_est_por_helice / (rho * (D**2) * (V_A**2))
 
 # =============================================================================
-# EJECUCIÓN DEL ALGORITMO
+# INTERFAZ DE RESULTADOS E INTERSECCIONES
 # =============================================================================
-if st.button("🚀 Ejecutar Optimización Global", type="primary"):
-    resultados = []
+st.subheader("📝 Evaluación Hidrodinámica e Intersecciones")
+col_inf1, col_inf2, col_inf3 = st.columns(3)
+col_inf1.metric("Tiro Necesario por Hélice (T*)", f"{T_est_por_helice/1000:.2f} kN")
+col_inf2.metric("Área Mínima de Keller (Fa/F)", f"{Fa_F_min:.3f}", f"Hélice AE/A0 = {AE_A0:.2f}")
+col_inf3.metric("Constante C* del Método", f"{C_star:.4f}")
+
+# Barrido analítico de las curvas para intersectar KT = C* * J^2
+pd_rango = np.array([0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4])
+lista_J_optimos = []
+lista_eta_optimos = []
+pares_validos_pd = []
+
+for pd_test in pd_rango:
+    prop_eval = WageningenBPropeller(diameter=D, blades=Z, pd_ratio=pd_test, area_ratio=AE_A0)
     
-    # Contenedor para mostrar progreso ya que la base de datos ahora es muy grande
-    with st.spinner("Escaneando base de datos masiva de motores, reducciones y hélices..."):
-        for motor in CATALOGO_MOTORES:
-            P_b_max = motor["HP"] * 745.7
-            RPM_motor = motor["RPM"]
-            n_motor = RPM_motor / 60.0
+    # Buscamos la raíz donde KT_serie(J) - C* * J^2 == 0
+    j_interseccion = None
+    min_dif = float('inf')
+    for j_candidato in np.linspace(0.01, 1.3, 500):
+        kt_hélice = prop_eval.kt(j_candidato)
+        kt_parabola = C_star * (j_candidato**2)
+        dif = abs(kt_hélice - kt_parabola)
+        if dif < min_dif:
+            min_dif = dif
+            j_interseccion = j_candidato
             
-            for i in CATALOGO_CAJAS:
-                n_prop = n_motor / i
-                
-                for D in np.arange(0.5, D_max + 0.05, 0.05):
-                    # Filtro de Cavitación de Keller
-                    keller_numerador = (1.3 + 0.3 * Z) * T_req_por_helice
-                    keller_denominador = (P_0 - P_v) * (D**2)
-                    Fa_F_min = (keller_numerador / keller_denominador) + k_keller
-                    
-                    if AE_A0_propuesto < Fa_F_min:
-                        continue  
-                    
-                    J = V_A / (n_prop * D)
-                    if J <= 0 or J > 1.5: continue
-                    
-                    KT_req = T_req_por_helice / (rho * (n_prop**2) * (D**4))
-                    best_pd = None
-                    min_error = float('inf')
-                    
-                    for pd_test in np.linspace(0.5, 1.4, 60): # Reducido a 60 pasos para mantener fluida la web
-                        prop_test = WageningenBPropeller(diameter=D, blades=Z, pd_ratio=pd_test, area_ratio=AE_A0_propuesto)
-                        try:
-                            error = abs(prop_test.kt(J) - KT_req)
-                            if error < min_error:
-                                min_error = error
-                                best_pd = pd_test
-                        except:
-                            continue
-                    
-                    if min_error < 0.015:
-                        prop_optima = WageningenBPropeller(diameter=D, blades=Z, pd_ratio=best_pd, area_ratio=AE_A0_propuesto)
-                        KQ = prop_optima.kq(J)
-                        P_d = (2 * np.pi * rho * (n_prop**3) * (D**5) * KQ) / 1000.0
-                        P_disponible_eje = (P_b_max * eta_s) / 1000.0
-                        
-                        # Filtro estricto: El motor debe cubrir la demanda pero no estar sobredimensionado en exceso (Margen de carga > 65%)
-                        if P_d <= P_disponible_eje and P_d >= (P_disponible_eje * 0.65):
-                            eta_O = prop_optima.eta(J)
-                            KT0 = prop_optima.kt(0.0)
-                            KQ0 = prop_optima.kq(0.0)
-                            
-                            Torque_max_eje = (P_b_max / (2 * np.pi * n_motor)) * eta_s
-                            n0_prop = np.sqrt(Torque_max_eje / (2 * np.pi * rho * (D**5) * KQ0))
-                            if n0_prop > n_prop: n0_prop = n_prop
-                                
-                            T0 = KT0 * rho * (n0_prop**2) * (D**4)
-                            T_bita_helice = (T0 * (1 - t_0)) / 1000.0
-                            T_bita_total_kN = T_bita_helice * num_ejes
-                            
-                            resultados.append({
-                                'Motor Propuesto': motor['modelo'], 
-                                'Potencia (HP)': motor['HP'], 
-                                'RPM Motor': motor['RPM'],
-                                'Relación Caja': f"{i}:1",
-                                'Diámetro Hélice (m)': round(D, 2), 
-                                'Paso P/D': round(best_pd, 2),
-                                'Keller Mín (Fa/F)': round(Fa_F_min, 3),
-                                'Eficiencia 𝜂_O': round(eta_O * 100, 1), 
-                                'Pot. Demandada/Eje (kW)': round(P_d, 1),
-                                'Tiro Total Bita (kN)': round(T_bita_total_kN, 1), 
-                                'Tiro Total Bita (Ton)': round(T_bita_total_kN / 9.81, 1),
-                                '_raw_eta': eta_O
-                            })
+    if min_dif < 0.01:
+        eta = prop_eval.eta(j_interseccion)
+        lista_J_optimos.append(j_interseccion)
+        lista_eta_optimos.append(eta)
+        pares_validos_pd.append(pd_test)
 
-    if resultados:
-        ganador = max(resultados, key=lambda x: x['_raw_eta'])
-        st.success(f"🎯 ¡Combinación óptima encontrada entre {len(CATALOGO_MOTORES)} opciones de motorización!")
+# =============================================================================
+# 4. OPTIMIZACIÓN ANALÍTICA: LÍNEA DE TENDENCIA POLINÓMICA (SEGÚN TU APUNTE)
+# =============================================================================
+if len(pares_validos_pd) >= 3:
+    # Ajuste polinómico cuadrático: eta = a*(P/D)² + b*(P/D) + c
+    coefs = np.polyfit(pares_validos_pd, lista_eta_optimos, 2)
+    
+    # Derivamos e igualamos a cero: 2*a*(P/D) + b = 0  ->  P/D_opt = -b / (2*a)
+    pd_optimo_analitico = -coefs[1] / (2 * coefs[0])
+    
+    # Validamos que el óptimo caiga en zona física admisible
+    if pd_optimo_analitico < 0.5 or pd_optimo_analitico > 1.4:
+        pd_optimo_analitico = pares_validos_pd[np.argmax(lista_eta_optimos)]
         
-        col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("Motor Seleccionado", f"{ganador['Potencia (HP)']} HP", ganador['Motor Propuesto'])
-        col2.metric("Reducción Caja", ganador['Relación Caja'])
-        col3.metric("Hélice (Diám x Paso)", f"{ganador['Diámetro Hélice (m)']}m x {ganador['Paso P/D']}")
-        col4.metric("Keller Mínimo", ganador['Keller Mín (Fa/F)'])
-        col5.metric("Tiro Total Bita", f"{ganador['Tiro Total Bita (Ton)']} Ton")
+    # Obtener J correspondiente al paso óptimo por interpolación
+    j_optimo_analitico = np.interp(pd_optimo_analitico, pares_validos_pd, lista_J_optimos)
+    
+    # Instanciamos la hélice óptima matemática absoluta
+    prop_optima = WageningenBPropeller(diameter=D, blades=Z, pd_ratio=pd_optimo_analitico, area_ratio=AE_A0)
+    eta_max = prop_optima.eta(j_optimo_analitico)
+    kt_opt = prop_optima.kt(j_optimo_analitico)
+    kq_opt = prop_optima.kq(j_optimo_analitico)
+    
+    # 5. Cálculo de revoluciones y potencia de diseño del motor
+    n_hélice_rps = V_A / (D * j_optimo_analitico)
+    n_hélice_rpm = n_hélice_rps * 60.0
+    
+    # Potencia entregada a la hélice en KW y HP (P = Q * w)
+    Q_nm = kq_opt * rho * (n_hélice_rps**2) * (D**5)
+    P_entregada_kW = (2 * np.pi * n_hélice_rps * Q_nm) / 1000.0
+    DHP = P_entregada_kW / 0.735499  # Conversión a caballos de vapor/HP
+    BHP_minimo = DHP / eta_s
+    BHP_diseño = BHP_minimo * 1.10  # Margen del 10% según tu apunte
+    
+    # =============================================================================
+    # 6. SELECCIÓN INTELIGENTE DE MOTOR Y CAJA COMERCIAL
+    # =============================================================================
+    st.subheader("📈 Resultado de la Optimización Polinómica")
+    
+    col_g1, col_g2, col_g3, col_g4 = st.columns(4)
+    col_g1.metric("P/D Óptimo Analítico", f"{pd_optimo_analitico:.3f}")
+    col_g2.metric("Coeficiente J* Óptimo", f"{j_optimo_analitico:.3f}")
+    col_g3.metric("Rendimiento Máximo (η)", f"{eta_max:.2%}")
+    col_g4.metric("Giro Requerido Hélice", f"{n_hélice_rpm:.1f} RPM")
+    
+    st.info(f"**Requisito de Potencia del Motor Calculado:** El motor seleccionado debe entregar al menos **{BHP_diseño:.1f} HP**.")
+    
+    # Catálogo de Motores Comerciales
+    CATALOGO_MOTORES = [
+        {"modelo": "Motor Naval Heavy-Duty A", "HP": 350.0, "RPM": 1200.0},
+        {"modelo": "Motor Naval Medium-Duty B", "HP": 500.0, "RPM": 1800.0},
+        {"modelo": "Motor Naval High-Speed C", "HP": 750.0, "RPM": 2100.0},
+        {"modelo": "Motor Naval High-Speed D", "HP": 1200.0, "RPM": 2300.0},
+        {"modelo": "Motor Naval Potencia Max E", "HP": 2500.0, "RPM": 1800.0}
+    ]
+    
+    motor_valido = None
+    for mot in CATALOGO_MOTORES:
+        if mot["HP"] >= BHP_diseño:
+            motor_valido = mot
+            break
+            
+    if motor_valido:
+        # Calcular relación de caja matemática exacta y buscar la comercial más cercana
+        i_teorica = motor_valido["RPM"] / n_hélice_rpm
+        cajas_comerciales = [2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0]
+        i_comercial = cajas_comerciales[np.argmin([abs(c - i_teorica) for c in cajas_comerciales])]
         
-        st.subheader("📈 Cuadro de Alternativas Viables Encontradas")
-        st.markdown("Usa los filtros de las cabeceras para ordenar por potencia, eficiencia o tiro en la bita:")
-        for r in resultados: r.pop('_raw_eta', None)
-        st.dataframe(resultados, use_container_width=True)
+        st.success("⚙️ Acoplamiento de Maquinaria Sugerido:")
+        col_m1, col_m2, col_m3 = st.columns(3)
+        col_m1.metric("Motor Comercial Elegido", motor_valido["modelo"], f"{motor_valido['HP']} HP @ {motor_valido['RPM']} RPM")
+        col_m2.metric("Relación de Caja Calculada (i)", f"{i_teorica:.2f}:1")
+        col_m3.metric("Caja Comercial más Próxima", f"{i_comercial:.1f}:1")
+        
+        # 7. Verificación final de Tiro sobre la Bita con la maquinaria real (J=0)
+        n_real_bita_rps = (motor_valido["RPM"] / i_comercial) / 60.0
+        KT0 = prop_optima.kt(0.0)
+        T0 = KT0 * rho * (n_real_bita_rps**2) * (D**4)
+        T_bita_total = T0 * (1 - t_0) * num_ejes
+        
+        st.metric("💪 Fuerza Final Verificada en el Tiro de la Bita", f"{T_bita_total/1000:.1f} kN (~{T_bita_total/9810:.1f} Toneladas)")
     else:
-        st.error("❌ No se encontraron combinaciones viables. La resistencia del casco exige una potencia o un diámetro de hélice que supera tus límites actuales, o el área propuesta no supera el criterio de Keller.")
+        st.warning("⚠️ La potencia requerida supera los límites del catálogo comercial básico. Incrementa el diámetro de hélice en el panel izquierdo para aumentar el rendimiento.")
+else:
+    st.error("La constante C* arroja valores fuera de los diagramas operativos de la Serie B. Intenta cambiar el diámetro o la velocidad de diseño.")
