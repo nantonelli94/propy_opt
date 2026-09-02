@@ -1,0 +1,9 @@
+
+streamlit==1.27.2  # currently pinned to this version
+# if on pyodide < 0.27 (without pyarrow), mocking pyarrow is needed
+pyarrow==17.0.0 # mock
+numpy
+altair
+pandas
+
+git+https://github.com/GijsB/propy
