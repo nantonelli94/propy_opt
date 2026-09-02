@@ -17,21 +17,21 @@ R_T = st.sidebar.number_input("Resistencia al avance (R_T en Newtons)", 1000, 10
 st.sidebar.subheader("🔗 Coeficientes de Interacción")
 w = st.sidebar.slider("Fracción de estela (w)", 0.05, 0.40, 0.20, 0.01)
 t = st.sidebar.slider("Deducción de empuje (t)", 0.05, 0.35, 0.15, 0.01)
-t_0 = st.sidebar.slider("Deducción de empuje en bita (t_0)", 0.01, 0.10, 0.04, 0.01)
+t_0 = st.sidebar.slider("Deducción de empuje en bita (t_0)", min_value=0.01, max_value=0.10, value=0.04, step=0.01)
 num_ejes = st.sidebar.radio("Líneas de eje", options=[1, 2], index=0)
 
 st.sidebar.subheader("🧼 Verificación de Cavitación (Keller)")
 h_eje = st.sidebar.slider("Inmersión del eje (h en metros)", 0.5, 10.0, 2.0, 0.1)
-Z = st.sidebar.selectbox("Número de palas (z)", options=[3, 4, 5, 6], index=1)
+Z = st.sidebar.selectbox("Número de palas (z)", options=[3, 4, 5, 6, 7], index=1)
 
 st.sidebar.subheader("📐 Restricción Física del Codaste")
 D = st.sidebar.number_input("Diámetro disponible de la hélice (D en metros)", 0.5, 8.0, 1.40, 0.05)
 rho = st.sidebar.number_input("Densidad del agua (kg/m³)", value=1025.0)
+eficiencia_ejes = st.sidebar.slider("Eficiencia de línea de ejes (η_s)", min_value=0.90, max_value=1.0, value=0.97, step=0.01)
 
 # =============================================================================
 # DESARROLLO MATEMÁTICO DEL ANEXO 1
 # =============================================================================
-# 1. Cálculo de fuerzas e interacciones
 V_A = (V_nudos * 0.514444) * (1 - w)
 T_total = R_T / (1 - t)
 T_est_por_helice = T_total / num_ejes  # Tiro estimado por hélice (T*)
@@ -67,7 +67,6 @@ pares_validos_pd = []
 for pd_test in pd_rango:
     prop_eval = WageningenBPropeller(diameter=D, blades=Z, pd_ratio=pd_test, area_ratio=AE_A0)
     
-    # Buscamos la raíz donde KT_serie(J) - C* * J^2 == 0
     j_interseccion = None
     min_dif = float('inf')
     for j_candidato in np.linspace(0.01, 1.3, 500):
@@ -85,42 +84,36 @@ for pd_test in pd_rango:
         pares_validos_pd.append(pd_test)
 
 # =============================================================================
-# 4. OPTIMIZACIÓN ANALÍTICA: LÍNEA DE TENDENCIA POLINÓMICA (SEGÚN TU APUNTE)
+# 4. OPTIMIZACIÓN ANALÍTICA: LÍNEA DE TENDENCIA POLINÓMICA
 # =============================================================================
 if len(pares_validos_pd) >= 3:
-    # Ajuste polinómico cuadrático: eta = a*(P/D)² + b*(P/D) + c
     coefs = np.polyfit(pares_validos_pd, lista_eta_optimos, 2)
     
-    # Derivamos e igualamos a cero: 2*a*(P/D) + b = 0  ->  P/D_opt = -b / (2*a)
+    # Derivamos: 2*a*(P/D) + b = 0
     pd_optimo_analitico = -coefs[1] / (2 * coefs[0])
     
-    # Validamos que el óptimo caiga en zona física admisible
     if pd_optimo_analitico < 0.5 or pd_optimo_analitico > 1.4:
         pd_optimo_analitico = pares_validos_pd[np.argmax(lista_eta_optimos)]
         
-    # Obtener J correspondiente al paso óptimo por interpolación
     j_optimo_analitico = np.interp(pd_optimo_analitico, pares_validos_pd, lista_J_optimos)
     
-    # Instanciamos la hélice óptima matemática absoluta
     prop_optima = WageningenBPropeller(diameter=D, blades=Z, pd_ratio=pd_optimo_analitico, area_ratio=AE_A0)
     eta_max = prop_optima.eta(j_optimo_analitico)
     kt_opt = prop_optima.kt(j_optimo_analitico)
     kq_opt = prop_optima.kq(j_optimo_analitico)
     
-    # 5. Cálculo de revoluciones y potencia de diseño del motor
     n_hélice_rps = V_A / (D * j_optimo_analitico)
     n_hélice_rpm = n_hélice_rps * 60.0
     
-    # Potencia entregada a la hélice en KW y HP (P = Q * w)
+    # Potencia entregada (DHP)
     Q_nm = kq_opt * rho * (n_hélice_rps**2) * (D**5)
     P_entregada_kW = (2 * np.pi * n_hélice_rps * Q_nm) / 1000.0
-    DHP = P_entregada_kW / 0.735499  # Conversión a caballos de vapor/HP
-    BHP_minimo = DHP / eta_s
-    BHP_diseño = BHP_minimo * 1.10  # Margen del 10% según tu apunte
+    DHP = P_entregada_kW / 0.735499  
     
-    # =============================================================================
-    # 6. SELECCIÓN INTELIGENTE DE MOTOR Y CAJA COMERCIAL
-    # =============================================================================
+    # RESOLUCIÓN DEL ERROR DE VARIABLES: Usamos la variable explícita de eficiencia
+    BHP_minimo = DHP / eficiencia_ejes
+    BHP_diseño = BHP_minimo * 1.10  
+    
     st.subheader("📈 Resultado de la Optimización Polinómica")
     
     col_g1, col_g2, col_g3, col_g4 = st.columns(4)
@@ -131,7 +124,6 @@ if len(pares_validos_pd) >= 3:
     
     st.info(f"**Requisito de Potencia del Motor Calculado:** El motor seleccionado debe entregar al menos **{BHP_diseño:.1f} HP**.")
     
-    # Catálogo de Motores Comerciales
     CATALOGO_MOTORES = [
         {"modelo": "Motor Naval Heavy-Duty A", "HP": 350.0, "RPM": 1200.0},
         {"modelo": "Motor Naval Medium-Duty B", "HP": 500.0, "RPM": 1800.0},
@@ -147,7 +139,6 @@ if len(pares_validos_pd) >= 3:
             break
             
     if motor_valido:
-        # Calcular relación de caja matemática exacta y buscar la comercial más cercana
         i_teorica = motor_valido["RPM"] / n_hélice_rpm
         cajas_comerciales = [2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0]
         i_comercial = cajas_comerciales[np.argmin([abs(c - i_teorica) for c in cajas_comerciales])]
@@ -158,7 +149,6 @@ if len(pares_validos_pd) >= 3:
         col_m2.metric("Relación de Caja Calculada (i)", f"{i_teorica:.2f}:1")
         col_m3.metric("Caja Comercial más Próxima", f"{i_comercial:.1f}:1")
         
-        # 7. Verificación final de Tiro sobre la Bita con la maquinaria real (J=0)
         n_real_bita_rps = (motor_valido["RPM"] / i_comercial) / 60.0
         KT0 = prop_optima.kt(0.0)
         T0 = KT0 * rho * (n_real_bita_rps**2) * (D**4)
@@ -166,6 +156,6 @@ if len(pares_validos_pd) >= 3:
         
         st.metric("💪 Fuerza Final Verificada en el Tiro de la Bita", f"{T_bita_total/1000:.1f} kN (~{T_bita_total/9810:.1f} Toneladas)")
     else:
-        st.warning("⚠️ La potencia requerida supera los límites del catálogo comercial básico. Incrementa el diámetro de hélice en el panel izquierdo para aumentar el rendimiento.")
+        st.warning("⚠️ La potencia requerida supera los límites del catálogo comercial básico.")
 else:
     st.error("La constante C* arroja valores fuera de los diagramas operativos de la Serie B. Intenta cambiar el diámetro o la velocidad de diseño.")
